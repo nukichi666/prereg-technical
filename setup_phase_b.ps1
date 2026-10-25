@@ -17,7 +17,11 @@ git config user.email "nukichi666@users.noreply.github.com"
 
 if ((Test-Path "$old\raw") -and -not (Test-Path "$repo\raw")) { Copy-Item "$old\raw" "$repo\raw" -Recurse }
 python -m pip install --quiet -r requirements.txt
-python -m pip install --quiet opentimestamps-client 2>$null
+# ots は任意（Python 3.14 では入らないことがある。その場合は週1回ブラウザで代替）
+$ErrorActionPreference = "Continue"
+python -m pip install --quiet opentimestamps-client *> $null
+if ($LASTEXITCODE -ne 0) { Write-Host "ots は入りませんでした（任意。週1回のタイムスタンプはブラウザで代替）" -ForegroundColor Yellow }
+$ErrorActionPreference = "Stop"
 
 $act = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$repo\daily_run.ps1`"" -WorkingDirectory $repo
 $trg = New-ScheduledTaskTrigger -Daily -At 12:30
