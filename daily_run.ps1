@@ -6,6 +6,8 @@ $log = Join-Path $PSScriptRoot "daily_run.log"
 function Log($m) { $t = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"); Write-Host "$t $m"; Add-Content -Path $log -Value "$t $m" -Encoding UTF8 }
 function Run($exe, $arg) { & $exe $arg 2>&1 | ForEach-Object { "$_" } | Out-File -FilePath $log -Append -Encoding utf8; return $LASTEXITCODE }
 
+# 最新のリポジトリを取り込む（別の場所からの更新があっても push が拒否されないように）
+git pull --rebase origin main 2>&1 | Out-File -FilePath $log -Append -Encoding utf8
 $first = [datetime]"2026-10-01"
 $yesterday = (Get-Date).ToUniversalTime().Date.AddDays(-1)
 New-Item -ItemType Directory -Force .\raw\dukascopy\.done, .\raw\binance | Out-Null
