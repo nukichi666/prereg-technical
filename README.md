@@ -2,6 +2,10 @@
 
 テクニカル平均回帰フィルターの事前登録研究。
 
+**最新の報告：[フェーズAの結果](reports/phase_a.md)（主要3対比すべて支持されず）**
+
+- フェーズB（前向き追跡）：2026-11-01〜2027-01-31。台帳は `signals/`、実行記録は `run_log.csv`
+
 - `prereg_v1.md` — 事前登録書（主要対比 P2-L / P2-U / P3-HV、検定方法、フェーズA/B）
 - `candidates_v0.2.1.md` — 指標・イベント・発火規則の定義（`candidates_v0.md` は同一内容）
 - `*.ots` — OpenTimestamps による時刻証明（検証: https://opentimestamps.org ）
