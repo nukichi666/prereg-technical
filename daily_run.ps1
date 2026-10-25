@@ -43,7 +43,8 @@ if ((Run "python" "log_signals.py") -ne 0) { Log "log_signals.py FAILED"; exit 1
 Log (Get-Content $log -Tail 3 | Select-String "新規シグナル" | Select-Object -Last 1)
 
 # --- GitHubへ反映（台帳・訂正・実行記録のみ）
-git add signals corrections.csv run_log.csv 2>$null
+# 存在するものだけ add（1つでも存在しないパスがあると git add 全体が失敗するため）
+foreach ($f in "signals","corrections.csv","run_log.csv") { if (Test-Path $f) { git add $f 2>$null } }
 git diff --cached --quiet
 if ($LASTEXITCODE -ne 0) {
   git commit -m "phase B ledger $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd'))" | Out-Null
@@ -51,13 +52,17 @@ if ($LASTEXITCODE -ne 0) {
   Log "git push exit=$LASTEXITCODE"
 }
 
-# --- 日曜（UTC）は今週分のファイルに OpenTimestamps を付ける（ots コマンドがある場合）
-if ((Get-Date).ToUniversalTime().DayOfWeek -eq "Sunday" -and (Get-Command ots -ErrorAction SilentlyContinue)) {
-  Get-ChildItem .\signals\*.csv, .\run_log.csv, .\corrections.csv -ErrorAction SilentlyContinue |
-    Where-Object { -not (Test-Path "$($_.FullName).ots") -or $_.Name -in "run_log.csv","corrections.csv" } |
-    ForEach-Object { Remove-Item "$($_.FullName).ots" -ErrorAction SilentlyContinue; ots stamp $_.FullName }
-  git add signals\*.ots *.ots 2>$null
-  git commit -m "weekly OpenTimestamps" | Out-Null; git push origin main 2>&1 | Out-File -FilePath $log -Append -Encoding utf8
-  Log "weekly ots done"
+# --- 日曜（UTC）は台帳ファイルに OpenTimestamps を付ける（stamp_ots.py。公式 ots コマンドは使わない）
+if ((Get-Date).ToUniversalTime().DayOfWeek -eq "Sunday") {
+  $targets = @(Get-ChildItem .\signals\*.csv -ErrorAction SilentlyContinue | Where-Object { -not (Test-Path "$($_.FullName).ots") } | ForEach-Object { $_.FullName })
+  foreach ($f in "run_log.csv","corrections.csv") { if (Test-Path $f) { $targets += (Resolve-Path $f).Path } }
+  if ($targets.Count -gt 0) {
+    if ((Run "python" (@("stamp_ots.py") + $targets)) -eq 0) {
+      foreach ($f in "signals","run_log.csv.ots","corrections.csv.ots") { if (Test-Path $f) { git add $f 2>$null } }
+      git diff --cached --quiet
+      if ($LASTEXITCODE -ne 0) { git commit -m "weekly OpenTimestamps" | Out-Null; git push origin main 2>&1 | Out-File -FilePath $log -Append -Encoding utf8 }
+      Log "weekly ots done"
+    } else { Log "weekly ots FAILED (次回の日曜に再試行)" }
+  }
 }
 Log "done"
