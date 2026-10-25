@@ -67,7 +67,11 @@ def load_dukascopy():
             print(f"[skip] 想定外のファイル名: {name}")
             continue
         asset, ptype = parts[0].upper(), parts[2]
+        if os.path.getsize(path) == 0:
+            continue  # 休場日は空ファイルになる
         df = pd.read_csv(path)
+        if df.empty:
+            continue
         df.columns = [c.lower() for c in df.columns]
         df.index = to_utc(df["timestamp"])
         df = df[["open", "high", "low", "close"]].astype(float)
@@ -86,6 +90,8 @@ def load_binance():
             "quote_volume", "trades", "taker_base", "taker_quote", "ignore"]
     for path in sorted(glob.glob(os.path.join(RAW_BINANCE, "*.csv"))):
         asset = os.path.basename(path).split("-")[0].upper()  # BTCUSDT
+        if os.path.getsize(path) == 0:
+            continue
         df = pd.read_csv(path, header=None, names=cols)
         df = df[pd.to_numeric(df["open_time"], errors="coerce").notna()]  # ヘッダ行対策
         df.index = to_utc(df["open_time"])

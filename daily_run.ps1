@@ -3,7 +3,8 @@
 $ErrorActionPreference = "Continue"
 Set-Location $PSScriptRoot
 $log = Join-Path $PSScriptRoot "daily_run.log"
-function Log($m) { $t = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"); "$t $m" | Tee-Object -FilePath $log -Append }
+function Log($m) { $t = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"); Write-Host "$t $m"; Add-Content -Path $log -Value "$t $m" -Encoding UTF8 }
+function Run($exe, $arg) { & $exe $arg 2>&1 | ForEach-Object { "$_" } | Out-File -FilePath $log -Append -Encoding utf8; return $LASTEXITCODE }
 
 $first = [datetime]"2026-10-01"
 $yesterday = (Get-Date).ToUniversalTime().Date.AddDays(-1)
@@ -37,16 +38,16 @@ for ($d = $first; $d -le $yesterday; $d = $d.AddDays(1)) {
 }
 
 # --- 再集計と台帳追記
-python resample.py *>> $log
-python log_signals.py *>> $log
-if ($LASTEXITCODE -ne 0) { Log "log_signals.py FAILED"; exit 1 }
+if ((Run "python" "resample.py") -ne 0) { Log "resample.py FAILED"; exit 1 }
+if ((Run "python" "log_signals.py") -ne 0) { Log "log_signals.py FAILED"; exit 1 }
+Log (Get-Content $log -Tail 3 | Select-String "新規シグナル" | Select-Object -Last 1)
 
 # --- GitHubへ反映（台帳・訂正・実行記録のみ）
 git add signals corrections.csv run_log.csv 2>$null
 git diff --cached --quiet
 if ($LASTEXITCODE -ne 0) {
   git commit -m "phase B ledger $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd'))" | Out-Null
-  git push origin main *>> $log
+  git push origin main 2>&1 | Out-File -FilePath $log -Append -Encoding utf8
   Log "git push exit=$LASTEXITCODE"
 }
 
@@ -56,7 +57,7 @@ if ((Get-Date).ToUniversalTime().DayOfWeek -eq "Sunday" -and (Get-Command ots -E
     Where-Object { -not (Test-Path "$($_.FullName).ots") -or $_.Name -in "run_log.csv","corrections.csv" } |
     ForEach-Object { Remove-Item "$($_.FullName).ots" -ErrorAction SilentlyContinue; ots stamp $_.FullName }
   git add signals\*.ots *.ots 2>$null
-  git commit -m "weekly OpenTimestamps" | Out-Null; git push origin main *>> $log
+  git commit -m "weekly OpenTimestamps" | Out-Null; git push origin main 2>&1 | Out-File -FilePath $log -Append -Encoding utf8
   Log "weekly ots done"
 }
 Log "done"

@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 運用修正 — 2026-10-25（フェーズB開始前。成績・シグナルへの影響なし）
+- resample.py: 休場日に Dukascopy が出力する空ファイル（0バイト／ヘッダのみ）を読み飛ばす。既存データには空ファイルがなかったため、フェーズAの入力・結果は変わらない
+- daily_run.ps1: ログを UTF-8 で書くよう変更、resample.py の失敗も検知
+- .gitattributes（`* -text`）を追加：Windows でのチェックアウト時に改行コードが変換され、ファイルのハッシュ（.ots の照合、code_sha256）が変わるのを防ぐ
+
 ## フェーズB 台帳の追加 — 2026-10-25（フェーズB開始前）
 - log_signals.py / daily_run.ps1 / setup_phase_b.ps1 / phase_b_protocol.md を追加
 - prereg_v1 第6節の列に、signal_id・親シグナルID・判定に使った指標値・行ハッシュ・コードハッシュ等を追加（定義の変更ではなく記録項目の追加）
