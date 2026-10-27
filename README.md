@@ -4,6 +4,8 @@
 
 **最新の報告：[フェーズAの結果](reports/phase_a.md)（主要3対比すべて支持されず）**
 
+**手法の通信簿 #1：[スコア v0 のフェーズA参考採点](results/score_v0/phase_a_scorecard.md)（6条件すべて EDGE 0点）**
+
 - フェーズB（前向き追跡）：2026-11-01〜2027-01-31。台帳は `signals/`、実行記録は `run_log.csv`
 
 - `prereg_v1.md` — 事前登録書（主要対比 P2-L / P2-U / P3-HV、検定方法、フェーズA/B）
