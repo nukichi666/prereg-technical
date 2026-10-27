@@ -1,0 +1,4 @@
+run_utc: 2026-10-27T11:31:50.455422+00:00
+python: 3.14.7  numpy: 2.5.3  pandas: 3.0.5
+spec: score_spec_v0.md  B=10000  seed=20261101  weeks=131
+verified_against_published_events: True
