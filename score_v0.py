@@ -90,7 +90,10 @@ def event_outcomes_for(data_dir, start, end):
 
 
 def verify_against_published(ev, published_csv):
-    """再計算したイベントが公開済み events.csv と一致するか。"""
+    """再計算したイベントが公開済み events.csv と一致するか。
+    フェーズA実行時にデータ終端を超えて欠損だった値（公開側 NaN、再計算側に値）は、後からのデータ追記によるものとして
+    公開側に合わせて NaN に戻す（prereg_v1 第3節の除外規則をフェーズA実行時のデータ終端で適用）。
+    それ以外の食い違いは停止。戻り値：公開側に合わせた ev。"""
     pub = pd.read_csv(published_csv)
     key = ["time_utc", "asset", "timeframe", "contrast", "is_child"]
     a = ev.copy()
@@ -101,16 +104,29 @@ def verify_against_published(ev, published_csv):
     m = a.merge(pub, on=key, how="outer", suffixes=("_new", "_pub"), indicator=True)
     if (m["_merge"] != "both").any():
         sys.exit(f"イベントの集合が一致しません（{int((m['_merge'] != 'both').sum())} 件）")
+    late = np.zeros(len(m), bool)
     for col in ("y_H8", "ycost_H8"):
         x, y = m[f"{col}_new"].to_numpy(float), m[f"{col}_pub"].to_numpy(float)
         same = (np.isnan(x) & np.isnan(y)) | np.isclose(x, y, rtol=0, atol=1e-9)
-        if not same.all():
-            sys.exit(f"{col} が公開済み events.csv と {int((~same).sum())} 件食い違います")
+        filled = np.isnan(y) & np.isfinite(x)
+        if not (same | filled).all():
+            sys.exit(f"{col} が公開済み events.csv と {int((~(same | filled)).sum())} 件食い違います")
+        late |= filled
+    if late.any():
+        lt = pd.to_datetime(m.loc[late, "time_utc"], utc=True)
+        if (lt < PHASE_A[1] - pd.Timedelta(days=7)).any():
+            sys.exit("データ終端付近以外で、公開時に欠損だった値が埋まっています。確認が必要です")
+        print(f"[verify] フェーズA実行時にデータ終端を超えていた {int(late.sum())} 件は、公開時と同じく欠損扱い")
+    out = m[key].copy()
+    for col in ("y_H8", "ycost_H8"):
+        out[col] = m[f"{col}_pub"].to_numpy(float)
     print(f"[verify] 公開済み events.csv と一致（{len(a)} 件）")
+    return out
 
 
-def baseline(data_dir, start, end):
-    """第3節：期間内の全足からエントリーした場合のグロス平均（買い方向）。売りは符号反転。"""
+def baseline(data_dir, start, end, data_end=None):
+    """第3節：期間内の全足からエントリーした場合のグロス平均（買い方向）。売りは符号反転。
+    data_end: これ以降に始まる足は存在しないものとして扱う（フェーズAは実行時のデータ終端 = 2026-10-01）。"""
     rows = []
     for asset, pt in SERIES:
         for tf in TFS:
@@ -121,6 +137,8 @@ def baseline(data_dir, start, end):
             n = len(df)
             t = np.arange(n)
             ok = (idx >= start) & (idx < end) & (t >= WARMUP) & (t + H < n) & np.isfinite(a)
+            if data_end is not None:
+                ok &= np.r_[idx[H:] < data_end, np.zeros(H, bool)]  # t+H 本目の足が data_end より前
             t = t[ok]
             y = np.log(c[t + H] / o[t + 1]) / (a[t] / c[t])
             for d in (+1, -1):
@@ -224,11 +242,10 @@ def run_phase_a(args):
         ev = ev_pub
         print("[verify] スキップ（テスト専用）")
     else:
-        verify_against_published(ev, args.events)
-        ev = ev.drop(columns=["week"])
-        ev["time_utc"] = pd.to_datetime(ev["time_utc"], utc=True)
+        ev = verify_against_published(ev, args.events)
+        ev["direction"] = ev["contrast"].map({c: d for _, c, _, d, _ in SETS})
 
-    base = baseline(args.data, start, end)
+    base = baseline(args.data, start, end, data_end=PHASE_A[1])
     weeks = weeks_of(start, end)
     cnt = boot_counts(len(weeks), SEED_A)
     months = (end - start).days / 30.4375
@@ -265,9 +282,9 @@ def run_phase_b(args):
     # フェーズA（第7節：A と B は独立にブートストラップ）
     a0, a1 = PHASE_A
     evA = event_outcomes_for(args.data, a0, a1)
-    verify_against_published(evA, args.events)
-    evA = evA.drop(columns=["week"])
-    baseA = baseline(args.data, a0, a1)
+    evA = verify_against_published(evA, args.events)
+    evA["direction"] = evA["contrast"].map({c: d for _, c, _, d, _ in SETS})
+    baseA = baseline(args.data, a0, a1, data_end=PHASE_A[1])
     wA = weeks_of(a0, a1)
     cA = boot_counts(len(wA), SEED_A)
     b0, b1 = PHASE_B
