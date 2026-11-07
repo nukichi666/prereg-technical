@@ -1,0 +1,94 @@
+# フェーズB 日次実行（PC のタスクスケジューラの代わり）
+# 2026-11-07 に PC の HDD が故障したため、実行場所を GitHub Actions に移した（CHANGELOG 参照）
+# daily_run.ps1・判定コード（resample.py / log_signals.py / screen_frequency.py）は変更していない
+name: phase-b-daily
+
+on:
+  schedule:
+    - cron: "30 3 * * *"   # 毎日 03:30 UTC = 12:30 JST（GitHub の混雑で数十分遅れることがある）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase-b-daily
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: windows-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Python パッケージ（requirements.txt の固定版）
+        shell: pwsh
+        run: python -m pip install --quiet -r requirements.txt
+
+      - name: 生データのキャッシュを戻す
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: raw
+          key: raw-v1-${{ github.run_id }}
+          restore-keys: raw-v1-
+
+      - name: 過去データの取得（キャッシュが無いときだけ。2023-10〜2026-09、fetch_data.ps1 をそのまま実行）
+        if: steps.cache.outputs.cache-matched-key == ''
+        shell: pwsh
+        run: ./fetch_data.ps1
+
+      - name: フェーズAの入力と一致するか照合（キャッシュが無いときだけ。記録のみ、不一致でも止めない）
+        if: steps.cache.outputs.cache-matched-key == ''
+        shell: pwsh
+        run: |
+          $rows = Import-Csv data_manifest.csv
+          $ok = 0; $ng = @()
+          foreach ($r in $rows) {
+            $p = Join-Path data $r.filename
+            if (-not (Test-Path $p)) { $ng += "$($r.filename): ファイルなし"; continue }
+            $h = (Get-FileHash $p -Algorithm SHA256).Hash.ToLower()
+            if ($h -eq $r.sha256) { $ok++ } else { $ng += "$($r.filename): $h（manifest $($r.sha256)）" }
+          }
+          $msg = "data_manifest 照合: 一致 $ok / $($rows.Count)"
+          Write-Host $msg
+          $ng | ForEach-Object { Write-Host "  不一致 $_" }
+          "### $msg" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          $ng | ForEach-Object { "- 不一致 $_" } | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
+      - name: git の設定
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: daily_run.ps1（取得 → 再集計 → 台帳追記 → push、日曜UTCは OpenTimestamps）
+        shell: pwsh
+        run: ./daily_run.ps1
+
+      - name: 生データのキャッシュを保存
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: raw
+          key: raw-v1-${{ github.run_id }}
+
+      - name: 実行ログを残す
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily_run_log
+          path: daily_run.log
+          if-no-files-found: ignore
+          retention-days: 90
