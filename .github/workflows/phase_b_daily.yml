@@ -19,6 +19,10 @@ jobs:
   run:
     runs-on: windows-latest
     timeout-minutes: 180
+    env:
+      # 実行環境のコンソールが cp1252 のため、日本語の print で落ちるのを防ぐ（コードは変更しない）
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,15 +48,17 @@ jobs:
           key: raw-v1-${{ github.run_id }}
           restore-keys: raw-v1-
 
-      - name: 過去データの取得（キャッシュが無いときだけ。2023-10〜2026-09、fetch_data.ps1 をそのまま実行）
-        if: steps.cache.outputs.cache-matched-key == ''
-        shell: pwsh
-        run: ./fetch_data.ps1
-
-      - name: フェーズAの入力と一致するか照合（キャッシュが無いときだけ。記録のみ、不一致でも止めない）
-        if: steps.cache.outputs.cache-matched-key == ''
+      - name: 過去データの取得（過去データが無いときだけ。2023-10〜2026-09、fetch_data.ps1 をそのまま実行）
         shell: pwsh
         run: |
+          if ((Test-Path raw/binance) -and (Get-ChildItem raw/binance/*.csv -ErrorAction SilentlyContinue)) { Write-Host "過去データはキャッシュにあるので取得しない"; exit 0 }
+          ./fetch_data.ps1
+
+      - name: フェーズAの入力と一致するか照合（日次データを足す前の1回だけ。記録のみ、不一致でも止めない）
+        shell: pwsh
+        run: |
+          if (Test-Path raw/dukascopy/.done) { Write-Host "日次データ取得済みのため照合は省略（初回に実施済み）"; exit 0 }
+          python resample.py
           $rows = Import-Csv data_manifest.csv
           $ok = 0; $ng = @()
           foreach ($r in $rows) {
