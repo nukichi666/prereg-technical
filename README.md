@@ -6,6 +6,8 @@
 
 **手法の通信簿 #1：[スコア v0 のフェーズA参考採点](results/score_v0/phase_a_scorecard.md)（6条件すべて EDGE 0点）**
 
+**手法の通信簿：[3本RCIの押し目買い（ドル円4時間足）](rci_usdjpy/README.md)（動画の主張は機械版では再現せず）**
+
 - フェーズB（前向き追跡）：2026-11-01〜2027-01-31。台帳は `signals/`、実行記録は `run_log.csv`
 
 - `prereg_v1.md` — 事前登録書（主要対比 P2-L / P2-U / P3-HV、検定方法、フェーズA/B）
